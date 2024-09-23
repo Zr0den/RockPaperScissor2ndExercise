@@ -123,3 +123,6 @@ fabric.properties
 .idea/caches/build_file_checksums.ser
 
 # End of https://www.toptal.com/developers/gitignore/api/dotnetcore,rider,macos
+/.vs/RockPaperScissor2ndExercise/v17/DocumentLayout.json
+/.vs/RockPaperScissor/FileContentIndex/a1c29ee9-19d4-45c9-a0b4-26e8dbe09267.vsidx
+/.vs/RockPaperScissor2ndExercise/v17/.wsuo
