@@ -1,6 +1,10 @@
+using EasyNetQ;
 using Events;
 using Helpers;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 using Serilog;
+using System.Diagnostics;
 
 namespace Monolith;
 
@@ -10,8 +14,20 @@ public class RandomPlayer : IPlayer
 
     public PlayerMovedEvent MakeMove(GameStartedEvent e)
     {
-        using var activity = Monitoring.ActivitySource.StartActivity();
-        
+        var bus = ConnectionHelper.GetRMQConnection();
+        bus.Rpc.RespondAsync<ServiceBRequest, ServiceBResponse>(req =>
+        {
+            var propagator = new TraceContextPropagator();
+            var parentContext = propagator.Extract(default, req, (r, key) =>
+            {
+                return new List<string>(new[] { r.Header.ContainsKey(key) ? r.Header[key].ToString() : String.Empty });
+            });
+
+            Baggage.Current = parentContext.Baggage;
+            using var activity = Monitoring.ActivitySource.StartActivity("Game", ActivityKind.Consumer, parentContext.ActivityContext);
+            return new ServiceBResponse();
+        });
+
         var random = new Random();
         var next = random.Next(3);
         var move = next switch
@@ -32,7 +48,19 @@ public class RandomPlayer : IPlayer
 
     public void ReceiveResult(GameFinishedEvent e)
     {
-        using var activity = Monitoring.ActivitySource.StartActivity();
+        var bus = ConnectionHelper.GetRMQConnection();
+        bus.Rpc.RespondAsync<ServiceBRequest, ServiceBResponse>(req =>
+        {
+            var propagator = new TraceContextPropagator();
+            var parentContext = propagator.Extract(default, req, (r, key) =>
+            {
+                return new List<string>(new[] { r.Header.ContainsKey(key) ? r.Header[key].ToString() : String.Empty });
+            });
+
+            Baggage.Current = parentContext.Baggage;
+            using var activity = Monitoring.ActivitySource.StartActivity("Game", ActivityKind.Consumer, parentContext.ActivityContext);
+            return new ServiceBResponse();
+        });
     }
 
     public string GetPlayerId()

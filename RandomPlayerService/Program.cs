@@ -2,6 +2,9 @@
 using Events;
 using Helpers;
 using Monolith;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
+using System.Diagnostics;
 
 namespace RandomPlayerService;
 
@@ -16,6 +19,19 @@ public static class Program
         while (!connectionEstablished)
         {
             var bus = ConnectionHelper.GetRMQConnection();
+            await bus.Rpc.RespondAsync<ServiceBRequest, ServiceBResponse>(req =>
+            {
+                var propagator = new TraceContextPropagator();
+                var parentContext = propagator.Extract(default, req, (r, key) =>
+                {
+                    return new List<string>(new[] { r.Header.ContainsKey(key) ? r.Header[key].ToString() : String.Empty });
+                });
+
+                Baggage.Current = parentContext.Baggage;
+                using var activity = Monitoring.ActivitySource.StartActivity("Game", ActivityKind.Consumer, parentContext.ActivityContext);
+                return new ServiceBResponse();
+            });
+
             var subscriptionResult = bus.PubSub.SubscribeAsync<GameStartedEvent>("RPS_" + Player.GetPlayerId(), e =>
             {
                 var moveEvent = Player.MakeMove(e);
@@ -26,7 +42,7 @@ public static class Program
             connectionEstablished = subscriptionResult.Status == TaskStatus.RanToCompletion;
             if(!connectionEstablished) Thread.Sleep(1000);
             
-            bus.PubSub.SubscribeAsync<GameFinishedEvent>("RPS_" + Player.GetPlayerId(), e =>
+            await bus.PubSub.SubscribeAsync<GameFinishedEvent>("RPS_" + Player.GetPlayerId(), e =>
             {
                 Player.ReceiveResult(e);
             });
